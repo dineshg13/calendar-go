@@ -7,20 +7,19 @@ import (
 	"math/rand"
 	"net/http"
 	"runtime"
-	"sync/atomic"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
 type Server struct {
-	name             string
-	rnd              *rand.Rand
-	apiCounter       metric.Int64Counter
-	latency          metric.Float64Histogram
-	memoryGauge      metric.Int64ObservableGauge
+	name        string
+	rnd         *rand.Rand
+	apiCounter  metric.Int64Counter
+	latency     metric.Float64Histogram
+	memoryGauge metric.Int64ObservableGauge
+	activeUsers metric.Int64UpDownCounter
 	activeUsersGauge metric.Int64ObservableGauge
 	activeUsersCount *atomic.Int64
 }
@@ -105,12 +104,13 @@ type response struct {
 func (s *Server) calendarHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	ctx := r.Context()
-	s.activeUsersCount.Add(1)
+	s.activeUsers.Add(ctx, 1)
 	defer func() {
-		s.activeUsersCount.Add(-1)
+		s.activeUsers.Add(ctx, -1)
 		duration := time.Since(start)
 		s.latency.Record(ctx, float64(duration))
 	}()
+
 	s.apiCounter.Add(r.Context(), 1)
 
 	timer := time.NewTimer(time.Millisecond * time.Duration(s.rnd.Int63n(2000)))
