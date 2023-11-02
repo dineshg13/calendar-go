@@ -7,22 +7,19 @@ import (
 	"math/rand"
 	"net/http"
 	"runtime"
-	"sync/atomic"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
 type Server struct {
-	name             string
-	rnd              *rand.Rand
-	apiCounter       metric.Int64Counter
-	latency          metric.Float64Histogram
-	memoryGauge      metric.Int64ObservableGauge
-	activeUsersGauge metric.Int64ObservableGauge
-	activeUsersCount atomic.Int64
+	name        string
+	rnd         *rand.Rand
+	apiCounter  metric.Int64Counter
+	latency     metric.Float64Histogram
+	memoryGauge metric.Int64ObservableGauge
+	activeUsers metric.Int64UpDownCounter
 }
 
 func NewServer(name string, mp metric.MeterProvider) (*Server, error) {
@@ -87,26 +84,12 @@ type response struct {
 func (s *Server) calendarHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	ctx := r.Context()
-	s.activeUsersCount.Add(1)
+	s.activeUsers.Add(ctx, 1)
 	defer func() {
-		s.activeUsersCount.Add(-1)
+		s.activeUsers.Add(ctx, -1)
 		duration := time.Since(start)
 		s.latency.Record(ctx, float64(duration))
 	}()
-	_, err := otel.GetMeterProvider().Meter(s.name).Int64ObservableGauge(
-		s.name+".active.users.gauge",
-		metric.WithDescription(
-			"active users gauge",
-		),
-		metric.WithUnit("By"),
-		metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
-			o.Observe(s.activeUsersCount.Load())
-			return nil
-		}),
-	)
-	if err != nil {
-		logger.Error("recording active users gauge", zap.Error(err))
-	}
 
 	s.apiCounter.Add(r.Context(), 1)
 
