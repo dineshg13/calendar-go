@@ -77,15 +77,12 @@ func deltaSelector(kind metric.InstrumentKind) metricdata.Temporality {
 	panic("unknown instrument kind")
 }
 
-func aggrSelector(ik metric.InstrumentKind) metric.Aggregation {
-	switch ik {
-	case metric.InstrumentKindHistogram:
+func exponentialHistogramSelector(ik metric.InstrumentKind) metric.Aggregation {
+	if ik == metric.InstrumentKindHistogram {
 		return metric.AggregationBase2ExponentialHistogram{
 			MaxSize:  160,
 			MaxScale: 20,
 		}
-	case metric.InstrumentKindUpDownCounter:
-		return metric.AggregationLastValue{}
 	}
 	return metric.DefaultAggregationSelector(ik)
 }
@@ -93,8 +90,8 @@ func aggrSelector(ik metric.InstrumentKind) metric.Aggregation {
 func initMetricProvider(res *resource.Resource) (*metric.MeterProvider, error) {
 	ctx := context.Background()
 	otlpexp, err := otlpmetricgrpc.New(ctx, otlpmetricgrpc.WithInsecure(),
-		otlpmetricgrpc.WithTemporalitySelector(deltaSelector),
-		otlpmetricgrpc.WithAggregationSelector(aggrSelector))
+		otlpmetricgrpc.WithTemporalitySelector(deltaSelector), // ← new!
+		otlpmetricgrpc.WithAggregationSelector(exponentialHistogramSelector))
 	if err != nil {
 		return nil, err
 	}
