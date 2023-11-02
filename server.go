@@ -22,7 +22,7 @@ type Server struct {
 	latency          metric.Float64Histogram
 	memoryGauge      metric.Int64ObservableGauge
 	activeUsersGauge metric.Int64ObservableGauge
-	activeUsersCount atomic.Int64
+	activeUsersCount *atomic.Int64
 }
 
 func NewServer(name string, mp metric.MeterProvider) (*Server, error) {
@@ -60,12 +60,30 @@ func NewServer(name string, mp metric.MeterProvider) (*Server, error) {
 		return nil, err
 	}
 
+	var activeUsersCount atomic.Int64
+	activeUsersGauge, err := otel.GetMeterProvider().Meter(s.name).Int64ObservableGauge(
+		name+".active.users.gauge",
+		metric.WithDescription(
+			"active users gauge",
+		),
+		metric.WithUnit("By"),
+		metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
+			o.Observe(activeUsersCount.Load())
+			return nil
+		}),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Server{
-		name:        name,
-		rnd:         rand.New(rand.NewSource(time.Now().Unix())),
-		apiCounter:  apiCounter,
-		latency:     histogram,
-		memoryGauge: memoryGauge,
+		name:             name,
+		rnd:              rand.New(rand.NewSource(time.Now().Unix())),
+		apiCounter:       apiCounter,
+		latency:          histogram,
+		memoryGauge:      memoryGauge,
+		activeUsersGauge: activeUsersGauge,
+		activeUsersCount: &activeUsersCount,
 	}, nil
 }
 
@@ -93,21 +111,6 @@ func (s *Server) calendarHandler(w http.ResponseWriter, r *http.Request) {
 		duration := time.Since(start)
 		s.latency.Record(ctx, float64(duration))
 	}()
-	_, err := otel.GetMeterProvider().Meter(s.name).Int64ObservableGauge(
-		s.name+".active.users.gauge",
-		metric.WithDescription(
-			"active users gauge",
-		),
-		metric.WithUnit("By"),
-		metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
-			o.Observe(s.activeUsersCount.Load())
-			return nil
-		}),
-	)
-	if err != nil {
-		logger.Error("recording active users gauge", zap.Error(err))
-	}
-
 	s.apiCounter.Add(r.Context(), 1)
 
 	timer := time.NewTimer(time.Millisecond * time.Duration(s.rnd.Int63n(2000)))
