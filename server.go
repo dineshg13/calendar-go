@@ -61,7 +61,7 @@ func NewServer(name string, mp metric.MeterProvider) (*Server, error) {
 	}
 
 	var activeUsersCount atomic.Int64
-	activeUsersGauge, err := otel.GetMeterProvider().Meter(name).Int64ObservableGauge(
+	activeUsersGauge, err := meter.Int64ObservableGauge(
 		name+".active.users.gauge",
 		metric.WithDescription(
 			"active users gauge",
